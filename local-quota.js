@@ -5,6 +5,7 @@ defineProvider({
   icon: { monogram: "Q", tint: "#497A78" },
   endpoints: [{ setting: "BASE_URL", policy: "https-or-loopback-http" }],
   settings: [
+    { key: "PAGE_URL", type: "plain", title: "内部额度网址 / Dashboard URL", subtitle: "HTTPS dashboard; leave empty to read the original JSON feed." },
     { key: "BASE_URL", type: "plain", title: "Local origin", subtitle: "http://127.0.0.1:8765 or another local port" },
     { key: "MAX_AGE", type: "plain", title: "Maximum age (minutes)", subtitle: "Default: 15. Set to your export interval plus a margin." }
   ],
@@ -15,7 +16,23 @@ defineProvider({
     if (!match || Number(match[1]) > 65535) throw new Error("Set a local origin such as http://127.0.0.1:8765.");
     const minutes = (ctx.settings.get("MAX_AGE") || "").trim() || "15";
     if (!/^[1-9][0-9]{0,4}$/.test(minutes) || Number(minutes) > 10080) throw new Error("Maximum age must be 1–10080 minutes.");
-    const data = (await ctx.http.getJSON(origin + "/v1/quota")).json;
+    const page = (ctx.settings.get("PAGE_URL") || "").trim();
+    let data;
+    if (page) {
+      const response = (await ctx.http.getJSON(origin + "/v1/page?url=" + encodeURIComponent(page))).json;
+      const messages = {
+        loading: "Waiting for the dashboard to load.",
+        invalid: "Enter an HTTPS dashboard URL without embedded credentials.",
+        signin: "Complete sign-in in the Local Quota Page Reader window.",
+        unavailable: "Dashboard unavailable. Check the address, network and VPN.",
+        unrecognized: "Could not identify an unambiguous quota. Open the quota summary, or use a JSON feed.",
+        "not-installed": "Install the companion page reader to use a dashboard URL."
+      };
+      if (response.state !== "ready") throw new Error(messages[response.state] || "Dashboard reader unavailable.");
+      data = response.quota;
+    } else {
+      data = (await ctx.http.getJSON(origin + "/v1/quota")).json;
+    }
     const allowed = ["version", "used", "limit", "observedAt", "resetsAt", "currency"];
     const nonnegative = n => Number.isFinite(n) && n >= 0;
     if (!data || typeof data !== "object" || Array.isArray(data) || data.version !== 1 ||

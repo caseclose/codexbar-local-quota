@@ -105,6 +105,22 @@ def main(cli):
         assert request({"Origin": "https://example.invalid"})[0] == 403
         print("PASS: isolated discovery and approval, fresh, stale, recovered, overage, omitted reset, "
               "zero allocation, source timestamp, redaction and loopback HTTP checks")
+        page_url = "usage.example.invalid/dashboard"
+        cfg = json.loads(config.read_text())
+        cfg["providers"][0]["pluginSettings"]["PAGE_URL"] = page_url
+        config.write_text(json.dumps(cfg))
+        server.page_state = root / "page.json"
+        def page(address, **values):
+            server.page_state.write_text(json.dumps(dict(page=address, **values)))
+        page("other.example.invalid", state="ready", quota={"version":1})
+        assert "Waiting" in command(*fetch).stderr
+        page(page_url, state="signin")
+        assert "sign-in" in command(*fetch).stderr
+        page(page_url, state="unrecognized")
+        assert "unambiguous" in command(*fetch).stderr
+        page(page_url, state="ready", quota=dict(version=1, used=12, limit=60, observedAt=instant(0)))
+        assert snapshot()["primary"]["usedPercent"] == 20
+        print("PASS: configured page, source isolation, sign-in and unsupported state")
         server.shutdown()
 
 

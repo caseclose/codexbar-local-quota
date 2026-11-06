@@ -1,11 +1,56 @@
 # Local Quota for CodexBar
 
-Display a quota exported by a local tool in the CodexBar menu bar. The plugin reads
-`GET /v1/quota` from an explicitly approved `http://127.0.0.1:PORT` origin. Its card
-shows used, limit, remaining, and the time the exporter observed the values.
-Tested with the official macOS arm64 CodexBar v0.83.0 CLI.
+Read quota from a dashboard URL or an existing local JSON feed. Dashboard mode
+includes a generic macOS WebKit reader for signed-in and JavaScript-rendered pages.
 
-## Install
+## Read a dashboard URL
+
+On macOS with CodexBar, Python 3 and Xcode Command Line Tools installed:
+
+```sh
+git clone https://github.com/caseclose/codexbar-local-quota.git
+cd codexbar-local-quota
+python3 install-page-reader.py
+```
+
+1. Open **CodexBar → Settings → Plugins → Local Quota**. Enter the dashboard
+   address in **内部额度网址 / Dashboard URL**, e.g. `usage.example.invalid/billing`
+   (illustrative). A bare hostname uses HTTPS. Use a dashboard link without
+   embedded tokens or passwords. For internal pages, connect to the required network.
+2. Approve the loopback origin shown by CodexBar. If a login window appears,
+   sign in there. You can reopen **Local Quota Page Reader.app** in
+   `~/Library/Application Support/Local Quota Page/` to complete sign-in.
+3. The reader checks the rendered dashboard roughly once a minute. Its two
+   background jobs start at user login. Only CodexBar needs a menu-bar icon.
+
+The reader recognizes explicitly labeled used/limit or remaining/limit amounts
+in English and Chinese, including labeled fractions. For example, “Used: 25 EUR”
+and “Monthly limit: 100 EUR” yield 75 EUR remaining. Conflicting totals,
+incompatible units, balance-only pages without a limit, and inaccessible
+dashboards cannot produce a percentage. Open a more specific summary or switch
+to the JSON feed for an unsupported layout. The reader observes the displayed
+quota; choose a URL that opens the intended account and billing period.
+
+WebKit keeps the login session locally. The reader inspects visible text on the
+configured HTTPS origin and saves only the configured address, status and quota
+snapshot. The plugin uses an approved IPv4 loopback endpoint. Browser-origin
+requests are rejected. The helper does not upload page text or cookies.
+The installer keeps existing CodexBar provider settings and selects its local
+port. If another service occupies the port, use `--port 8766`. To keep a legacy
+export available when the dashboard setting is blank, pass
+`--feed /absolute/path/to/quota.json`.
+
+To remove dashboard mode, clear the dashboard field. To uninstall the background
+jobs, run the following in a terminal and remove the two corresponding plist
+files from `~/Library/LaunchAgents/`. Remove the **Local Quota Page** support
+folder if you also want to discard its reader and last snapshot.
+
+```sh
+launchctl bootout "gui/$(id -u)/io.github.caseclose.local-quota.reader"
+launchctl bootout "gui/$(id -u)/io.github.caseclose.local-quota.http"
+```
+
+## Use a local JSON feed instead
 
 1. Download [local-quota.js](./local-quota.js). In **CodexBar → Settings → Plugins → Install…**
    select the file, or copy it to `~/.config/codexbar/providers/`.
@@ -56,12 +101,12 @@ Example response (synthetic; replace the timestamp with the actual observation t
   and browser Origin requests. No request or response body is logged. Loopback is
   accessible to local processes; keep only quota fields in the feed. No browser,
   filesystem, secret or persistent-storage capability is requested by the plugin.
-- Keep source-specific collection, account details, and authentication in your own
-  exporter. Both the demo and integration test use synthetic data.
+- For JSON mode, keep source-specific authentication in your exporter. Both the demo and integration test use synthetic data.
 
 ## Verify
 
 ```sh
+node page-reader/detect.test.js
 python3 smoke.py /path/to/CodexBarCLI
 ```
 
